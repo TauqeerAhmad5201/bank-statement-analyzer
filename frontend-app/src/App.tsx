@@ -19,6 +19,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Transaction[]>([]);
   const [sortConfig, setSortConfig] = useState<{ key: keyof Transaction; direction: 'asc' | 'desc' } | null>(null);
+  const [cardType, setCardType] = useState<string>('Statement Summary');
+  const [currency, setCurrency] = useState<string>('$');
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -35,6 +37,8 @@ function App() {
         });
         if (response.data.status === 'success') {
           setData(response.data.data);
+          if (response.data.card_type) setCardType(response.data.card_type);
+          if (response.data.currency_symbol) setCurrency(response.data.currency_symbol);
         } else {
           alert('Error: ' + response.data.message);
         }
@@ -106,7 +110,7 @@ function App() {
               <CreditCard className="mr-3 h-10 w-10 text-indigo-600" />
               Expenditure App
             </h1>
-            <p className="mt-2 text-gray-500">Analyze your credit & debit card statements seamlessly.</p>
+            <p className="mt-2 text-gray-500">Analyze your credit & debit card statements seamlessly. {data.length > 0 && <span className="ml-2 font-semibold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">{cardType}</span>}</p>
           </div>
           <div>
             <label className="cursor-pointer inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background bg-indigo-600 text-white hover:bg-indigo-700 h-10 py-2 px-4">
@@ -119,14 +123,14 @@ function App() {
 
         {data.length > 0 && (
           <>
-            {/* KPI Cards */}
+            {/* KPI Cards */}{currency}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="rounded-xl border bg-white p-6 shadow-sm">
                 <div className="flex flex-row items-center justify-between pb-2">
                   <h3 className="tracking-tight text-sm font-medium text-gray-500">Total Expenses</h3>
                   <DollarSign className="h-4 w-4 text-gray-400" />
                 </div>
-                <div className="text-3xl font-bold">${totalExpense.toFixed(2)}</div>
+                <div className="text-3xl font-bold">{currency}{totalExpense.toFixed(2)}</div>
                 <p className="text-xs text-gray-500 mt-1">Based on uploaded statement</p>
               </div>
               <div className="rounded-xl border bg-white p-6 shadow-sm">
@@ -162,7 +166,7 @@ function App() {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="date" />
                       <YAxis />
-                      <RechartsTooltip formatter={(value) => `$${value}`} />
+                      <RechartsTooltip formatter={(value) => `${currency}${value}`} />
                       <Bar dataKey="amount" fill="#4f46e5" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -182,7 +186,7 @@ function App() {
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <RechartsTooltip formatter={(value) => `$${Number(value).toFixed(2)}`} />
+                      <RechartsTooltip formatter={(value) => `${currency}${Number(value).toFixed(2)}`} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -241,7 +245,7 @@ function App() {
                           </span>
                         </td>
                         <td className={`px-6 py-4 text-right whitespace-nowrap font-medium ${item.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
-                          {item.type === 'income' ? '+' : '-'}${Math.abs(item.amount).toFixed(2)}
+                          {item.type === 'income' ? '+' : '-'}{currency}{Math.abs(item.amount).toFixed(2)}
                         </td>
                       </tr>
                     ))}

@@ -25,6 +25,92 @@ class Transaction(BaseModel):
     amount: float
     category: str
 
+
+def classify_transaction_type(desc: str, amount_str: str, amount_val: float) -> str:
+    text = f"{desc} {amount_str}".lower()
+
+    credit_keywords = [
+        "payment",
+        "refund",
+        "reversal",
+        "cashback",
+        "deposit",
+        "interest credited",
+        "interest credit",
+        "credited",
+    ]
+    debit_keywords = [
+        "withdrawal",
+        "purchase",
+        "pos",
+        "debit",
+        "charge",
+    ]
+
+    has_credit_keyword = any(word in text for word in credit_keywords) or bool(re.search(r"\bcr\b", text))
+    has_debit_keyword = any(word in text for word in debit_keywords) or bool(re.search(r"\bdr\b", text))
+
+    if has_credit_keyword and not has_debit_keyword:
+        return "income"
+    if has_debit_keyword and not has_credit_keyword:
+        return "expense"
+
+    # Fallback to sign-based detection for statements where credits are negative.
+    return "income" if amount_val < 0 else "expense"
+
+
+def parse_amount_value(amount_str: str) -> Optional[float]:
+    text = amount_str.strip()
+    if not text:
+        return None
+
+    has_parentheses = text.startswith("(") and text.endswith(")")
+    has_trailing_minus = text.endswith("-")
+    has_leading_minus = text.startswith("-")
+
+    # Remove currency markers and CR/DR labels while keeping numeric tokens.
+    cleaned = re.sub(r"(?i)\b(cr|dr)\b", "", text)
+    cleaned = cleaned.replace("(", "").replace(")", "")
+    cleaned = re.sub(r"[^0-9,\.\-]", "", cleaned)
+    cleaned = cleaned.strip()
+
+    if not cleaned:
+        return None
+
+    # Normalize separators for both 1,234.56 and 1.234,56-like inputs.
+    if "," in cleaned and "." in cleaned:
+        if cleaned.rfind(".") > cleaned.rfind(","):
+            cleaned = cleaned.replace(",", "")
+        else:
+            cleaned = cleaned.replace(".", "").replace(",", ".")
+    elif "," in cleaned:
+        if re.search(r",\d{2}$", cleaned):
+            cleaned = cleaned.replace(".", "").replace(",", ".")
+        else:
+            cleaned = cleaned.replace(",", "")
+
+    if cleaned.endswith("-"):
+        cleaned = "-" + cleaned[:-1]
+
+    # Keep only one leading minus if malformed internal minus signs are present.
+    if cleaned.count("-") > 1:
+        cleaned = cleaned.replace("-", "")
+    elif "-" in cleaned and not cleaned.startswith("-"):
+        cleaned = cleaned.replace("-", "")
+
+    if cleaned in {"", "-", ".", "-."}:
+        return None
+
+    try:
+        value = float(cleaned)
+    except ValueError:
+        return None
+
+    if has_parentheses or has_trailing_minus or has_leading_minus:
+        value = -abs(value)
+
+    return value
+
 # Categories heuristic
 def guess_category(desc: str) -> str:
     desc = desc.lower()
@@ -55,26 +141,52 @@ async def upload_statement(file: UploadFile = File(...)):
             for page in pdf.pages:
                 text += page.extract_text() + "\n"
                 
-            # Heuristic regex: Date (MM/DD or YYYY-MM-DD), Descr, Amount (-?\$?\d+\.\d{2})
-            # This is a very simplified mock regex.
-            # E.g. "05/12 Walmart 45.32"
-            pattern = re.compile(r'((?:\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)|(?:\d{4}-\d{2}-\d{2}))\s+(.*?)\s+(-?\$?\d+[\.,]\d{2})')
-            matches = pattern.findall(text)
+            line_pattern = re.compile(r'^\s*((?:\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)|(?:\d{4}-\d{2}-\d{2}))\s+(.*)$')
+            amount_pattern = re.compile(
+                r'([+-]?(?:[a-zA-Z]{1,3}\.?\s*|[$€£₹¥]\s*)?(?:\d{1,3}(?:[,\s]\d{3})+|\d+)(?:[\.,]\d{2})?(?:-)?(?:\s*(?:cr|dr))?|\((?:[a-zA-Z]{1,3}\.?\s*|[$€£₹¥]\s*)?(?:\d{1,3}(?:[,\s]\d{3})+|\d+)(?:[\.,]\d{2})?\))',
+                re.IGNORECASE,
+            )
             
             idx = 1
-            for match in matches:
-                date_str, desc, amount_str = match
-                
-                # Cleanup amount
-                amount_clean = amount_str.replace('$', '').replace(',', '')
-                try:
-                    amount_val = float(amount_clean)
-                except:
+            for line in text.splitlines():
+                line_match = line_pattern.match(line)
+                if not line_match:
+                    continue
+
+                date_str = line_match.group(1)
+                line_rest = line_match.group(2).strip()
+                amount_matches = list(amount_pattern.finditer(line_rest))
+                if not amount_matches:
+                    continue
+
+                chosen_amount = None
+                chosen_match = None
+                for amount_match in reversed(amount_matches):
+                    candidate = amount_match.group(0).strip()
+                    candidate_value = parse_amount_value(candidate)
+                    if candidate_value is None:
+                        continue
+
+                    if chosen_amount is None:
+                        chosen_amount = candidate
+                        chosen_match = amount_match
+                        amount_val = candidate_value
+
+                    if abs(candidate_value) > 0:
+                        chosen_amount = candidate
+                        chosen_match = amount_match
+                        amount_val = candidate_value
+                        break
+
+                if chosen_amount is None or chosen_match is None:
+                    continue
+
+                desc = line_rest[:chosen_match.start()].strip() or line_rest.replace(chosen_amount, '').strip()
+
+                if not desc:
                     continue
                     
-                # To simulate expenses vs payments, let's treat positive as expense unless it's a payment
-                if "payment" in desc.lower():
-                    amount_val = -abs(amount_val)
+                tx_type = classify_transaction_type(desc, chosen_amount, amount_val)
                     
                 category = guess_category(desc)
                 
@@ -82,12 +194,32 @@ async def upload_statement(file: UploadFile = File(...)):
                     "id": str(idx),
                     "date": date_str,
                     "description": desc.strip(),
-                    "amount": abs(amount_val), # Just keep absolute representation if needed, but let's keep original
+                    "amount": abs(amount_val),
                     "category": category,
-                    "type": "income" if amount_val < 0 else "expense"
+                    "type": tx_type,
                 })
                 idx += 1
                 
+        # Card Type detection
+        text_lower = text.lower()
+        if any(word in text_lower for word in ['credit', 'apr', 'minimum due', 'credit limit', 'statement balance', 'payment due']):
+            card_type = 'Credit Card Bill'
+        elif any(word in text_lower for word in ['debit', 'checking', 'atm', 'overdraft', 'available balance']):
+            card_type = 'Debit Card Analysis'
+        else:
+            card_type = 'Card Analysis (Unknown Type)'
+
+        # Currency detection based on symbols or keywords in text
+        currency_symbol = '$'
+        if '€' in text_lower or re.search(r'\beur\b', text_lower):
+            currency_symbol = '€'
+        elif '£' in text_lower or re.search(r'\bgbp\b', text_lower):
+            currency_symbol = '£'
+        elif '₹' in text_lower or re.search(r'\binr\b', text_lower) or re.search(r'\brs\.?\b', text_lower) or 'rupees' in text_lower:
+            currency_symbol = '₹'
+        elif '¥' in text_lower or re.search(r'\bjpy\b', text_lower):
+            currency_symbol = '¥'
+        
         # If no matches found, return some mock data to show the app functionality
         if len(transactions) == 0:
             transactions = [
@@ -99,7 +231,7 @@ async def upload_statement(file: UploadFile = File(...)):
                 {"id": "6", "date": "2026-06-07", "description": "NETFLIX", "amount": 15.99, "category": "Entertainment", "type": "expense"},
             ]
             
-        return {"status": "success", "data": transactions}
+        return {"status": "success", "data": transactions, "card_type": card_type, "currency_symbol": currency_symbol}
         
     except Exception as e:
         return {"status": "error", "message": str(e)}
