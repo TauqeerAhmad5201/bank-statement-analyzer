@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import axios from 'axios';
 import { Upload, ChevronUp, ChevronDown, PieChart as PieChartIcon, BarChart as BarChartIcon, DollarSign, CreditCard } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 interface Transaction {
   id: string;
@@ -15,7 +15,6 @@ interface Transaction {
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#A28DFF', '#FF66B2'];
 
 function App() {
-  const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Transaction[]>([]);
   const [sortConfig, setSortConfig] = useState<{ key: keyof Transaction; direction: 'asc' | 'desc' } | null>(null);
@@ -25,7 +24,6 @@ function App() {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
-      setFile(selectedFile);
       setLoading(true);
       
       const formData = new FormData();
@@ -59,7 +57,7 @@ function App() {
   };
 
   const sortedData = useMemo(() => {
-    let sortableItems = [...data];
+    const sortableItems = [...data];
     if (sortConfig !== null) {
       sortableItems.sort((a, b) => {
         if (a[sortConfig.key] < b[sortConfig.key]) {
@@ -181,8 +179,8 @@ function App() {
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={categoryData} cx="50%" cy="50%" labelLine={false} innerRadius={60} outerRadius={80} fill="#8884d8" dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                        {categoryData.map((entry, index) => (
+                      <Pie data={categoryData} cx="50%" cy="50%" labelLine={false} innerRadius={60} outerRadius={80} fill="#8884d8" dataKey="value" label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}>
+                        {categoryData.map((_, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
