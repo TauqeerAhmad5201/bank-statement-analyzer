@@ -220,6 +220,12 @@ function App() {
                           {sortConfig?.key === 'category' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-4 h-4 ml-1" /> : <ChevronDown className="w-4 h-4 ml-1" />) : <ChevronUp className="w-4 h-4 ml-1 opacity-20" />}
                         </div>
                       </th>
+                      <th scope="col" className="px-6 py-3 cursor-pointer select-none hover:bg-gray-200" onClick={() => handleSort('type')}>
+                        <div className="flex items-center">
+                          Type
+                          {sortConfig?.key === 'type' ? (sortConfig.direction === 'asc' ? <ChevronUp className="w-4 h-4 ml-1" /> : <ChevronDown className="w-4 h-4 ml-1" />) : <ChevronUp className="w-4 h-4 ml-1 opacity-20" />}
+                        </div>
+                      </th>
                       <th scope="col" className="px-6 py-3 cursor-pointer select-none hover:bg-gray-200 text-right" onClick={() => handleSort('amount')}>
                         <div className="flex items-center justify-end">
                           Amount
@@ -229,26 +235,37 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedData.map((item, idx) => (
+                    {sortedData.map((item, idx) => {
+                      const catClass = item.category === 'Food & Dining' ? 'bg-orange-100 text-orange-800' :
+                        item.category === 'Transport' ? 'bg-blue-100 text-blue-800' :
+                        item.category === 'Shopping' ? 'bg-pink-100 text-pink-800' :
+                        item.category === 'Entertainment' ? 'bg-purple-100 text-purple-800' :
+                        item.category === 'Health' ? 'bg-green-100 text-green-800' :
+                        'bg-gray-100 text-gray-800';
+                      const typeBadge = item.type === 'income' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+                      const amountTextClass = item.type === 'income' ? 'text-green-600' : 'text-gray-900';
+                      const typeLabel = item.type === 'income' ? 'Credit' : 'Debit';
+                      const sanitizedDescription = (item.description || '').replace(/^\s*(Cre|De)\b[\s:-]*/i, '');
+                      return (
                       <tr key={item.id || idx} className="border-b last:border-0 hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-gray-500">{item.date}</td>
-                        <td className="px-6 py-4 font-medium text-gray-900">{item.description}</td>
+                        <td className="px-6 py-4 font-medium text-gray-900">{sanitizedDescription}</td>
                         <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium 
-                            ${item.category === 'Food & Dining' ? 'bg-orange-100 text-orange-800' : 
-                              item.category === 'Transport' ? 'bg-blue-100 text-blue-800' :
-                              item.category === 'Shopping' ? 'bg-pink-100 text-pink-800' :
-                              item.category === 'Entertainment' ? 'bg-purple-100 text-purple-800' :
-                              item.category === 'Health' ? 'bg-green-100 text-green-800' :
-                              'bg-gray-100 text-gray-800'}`}>
+                          <span className={"px-2.5 py-1 rounded-full text-xs font-medium " + catClass}>
                             {item.category}
                           </span>
                         </td>
-                        <td className={`px-6 py-4 text-right whitespace-nowrap font-medium ${item.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={"px-2.5 py-1 rounded-full text-xs font-medium " + typeBadge} aria-label={item.type}>
+                            {typeLabel}
+                          </span>
+                        </td>
+                        <td className={"px-6 py-4 text-right whitespace-nowrap font-medium " + amountTextClass}>
                           {item.type === 'income' ? '+' : '-'}{currency}{Math.abs(item.amount).toFixed(2)}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
